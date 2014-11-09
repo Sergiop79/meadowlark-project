@@ -5,12 +5,16 @@ var express = require('express');
 var app = express();
 var exphbs = require('express-handlebars');
 
+//config handlebars
+var hbs = exphbs.create({
+  defaultLayout:'main'
+});
+
+
 app.set('port', process.env.PORT || 3000);
 
 // set up handlebars view engine
-app.engine('handlebars', exphbs({
-  defaultLayout: 'main'
-}));
+app.engine('handlebars', hbs.engine);
 app.set('view engine', 'handlebars');
 
 // static files
