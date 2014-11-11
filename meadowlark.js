@@ -7,10 +7,11 @@ var exphbs = require('express-handlebars');
 var bodyParser = require('body-parser');
 var formidable = require('formidable');
 var jqupload = require('jquery-file-upload-middleware');
+var credentials = require('./credentials');
 
 //config handlebars
 var hbs = exphbs.create({
-  defaultLayout:'main',
+  defaultLayout: 'main',
   helpers: {
     section: function (name, options) {
       if (!this._sections) {
@@ -21,6 +22,10 @@ var hbs = exphbs.create({
     }
   }
 });
+
+// cookies and sessions
+app.use(require('cookie-parser')(credentials.cookieSecret));
+app.use(require('express-session')());
 
 // body-parser
 app.use(bodyParser.urlencoded({
@@ -58,8 +63,21 @@ app.use('/upload', function (req, res, next) {
   })(req, res, next);
 });
 
+// flash messages middleware
+app.use(function (req, res, next) {
+  // if there's a flash message, transfer
+  // it to the context, then clear it
+  res.locals.flash = req.session.flash;
+  delete req.session.flash;
+  next();
+});
+
 // routes
 app.get('/', function (req, res) {
+  res.cookie('monster', 'mom mom');
+  res.cookie('signed_monster', 'mom mom', {
+    signed: true
+  });
   res.render('home');
 });
 
@@ -98,7 +116,70 @@ app.get('/data/nursery-rhyme', function (req, res) {
 app.get('/newsletter', function (req, res) {
   // we will lear about CSRF later ..for now we just
   // provide a dummy value
-  res.render('newsletter', { csrf: 'CSRF token goes here'});
+  res.render('newsletter', {
+    csrf: 'CSRF token goes here'
+  });
+});
+
+// for now we're mocking NewsLetterSignUp:
+function NewsLetterSignUp() {
+  NewsLetterSignUp.prototype.save = function (cb) {
+    cb();
+  };
+}
+
+var VALID_EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+
+app.post('/newsletter', function (req, res) {
+  var name = req.body.name || '';
+  var email = req.body.email || '';
+
+  if (!email.match(VALID_EMAIL_REGEX)) {
+    if (req.xhr) {
+      return res.json({
+        error: 'Invalid name email address'
+      });
+    }
+    req.session.flash = {
+      type: 'danger',
+      intro: 'Validation Error',
+      message: 'The email address you entered was not valid.'
+    };
+    return res.redirect(303, '/newsletter/archive');
+  }
+  new NewsLetterSignUp({
+    name: name,
+    email: email
+  }).save(function (err) {
+    if (err) {
+      if (req.xhr) {
+        return res.json({
+          error: 'Database error'
+        });
+      }
+      req.session.flash = {
+        type: 'danger',
+        intro: 'Database error',
+        message: 'There wa a database error; please try again later.'
+      };
+      return res.redirect(303, '/newsletter/archive');
+    }
+    if (req.xhr) {
+      return res.json({
+        success: true
+      });
+    }
+    req.session.flash = {
+      type: 'success',
+      intro: 'Thank you!',
+      message: 'You have now signed up for the newsletter'
+    };
+    return res.redirect(303, '/newsletter/archive');
+  });
+});
+
+app.get('/newsletter/archive', function (req, res) {
+  res.render('newsletter/archive');
 });
 
 app.get('/thank-you', function (req, res) {
@@ -107,7 +188,9 @@ app.get('/thank-you', function (req, res) {
 
 app.post('/process', function (req, res) {
   if (req.xhr || req.accepts('json,html') === 'json') {
-    res.send({ sucess: true });
+    res.send({
+      sucess: true
+    });
   } else {
     res.redirect(303, '/thank-you');
   }
